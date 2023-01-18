@@ -1,1 +1,1 @@
-/home/dplepler/projects/game/target/debug/game: /home/dplepler/projects/game/src/main.rs
+/home/davidpl/rust-training/Snake---Rust/target/debug/game: /home/davidpl/rust-training/Snake---Rust/src/main.rs

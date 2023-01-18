@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 termion = "2.0.1"
-
+termios = "0.3.3"
+lazy_static = "1.4.0"

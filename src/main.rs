@@ -1,16 +1,26 @@
 extern crate termion;
+extern crate termios;
+
+#[macro_use]
+extern crate lazy_static;
+
 use termion::{color, cursor, clear};
-use termion::input::TermRead;
+use std::io;
+use std::io::Read;
+use std::io::Write;
+use termios::{Termios, TCSANOW, ECHO, ICANON, tcsetattr};
 use std::{thread, time};
-use termion::event::Key;
+use std::sync::RwLock;
+use std::sync::Arc;
+
 
 const WIDTH: u16 = 20;
 const HEIGHT: u16 = 20;
 
-
 const WIDTH_OFFSET: u16 = 59;
 const HEIGHT_OFFSET: u16 = 10;
 
+#[derive(Clone)]
 enum Direction {
 
     Left,
@@ -23,6 +33,10 @@ struct Snake {
 
     body: Vec<u16>,
     direction: Direction,
+}
+
+lazy_static! {
+    static ref key_buffer: Arc<RwLock<[u8; 1]>> = Arc::new(RwLock::new([0]));
 }
 
 
@@ -96,26 +110,21 @@ fn clear_snake(snake: &Snake) {
 
 fn user_input(snake: &mut Snake, prev_direction: Direction) {
 
+    thread::spawn(move || {
 
-    let mut stdin = termion::async_stdin();
-    let mut it = stdin.keys();
-    
-    let b = it.next();
-    match b {
-        Some(x) => match x {
-            Ok(k) => {
-                match k {
-                    Key::Up => update_snake(snake, Direction::Up),
-                    Key::Down => update_snake(snake, Direction::Down),
-                    Key::Right => update_snake(snake, Direction::Right),
-                    Key::Left => update_snake(snake, Direction::Left),
-                    _ => update_snake(snake, prev_direction),
-                }
-            },
-            _ => {}
-    },
-    None => {}
-    }
+        let stdin = 0;
+        let termios = Termios::from_fd(stdin).unwrap();
+        let mut new_termios = termios.clone();   
+        new_termios.c_lflag &= !(ICANON | ECHO); 
+        tcsetattr(stdin, TCSANOW, &mut new_termios).unwrap();
+        let stdout = io::stdout();
+        let mut reader = io::stdin();
+        stdout.lock().flush().unwrap();
+
+        reader.read_exact(&mut key_buffer).unwrap();
+        println!("You have hit: {key_buffer}");
+        tcsetattr(stdin, TCSANOW, & termios).unwrap();
+    });
 }
 
 
@@ -123,7 +132,7 @@ fn main() {
     
     
     println!("{clear}", clear = clear::All);
-    let mut snake = Snake{ body: Vec::new(), direction: Direction::Up };
+    let mut snake = Snake{ body: Vec::new(), direction: Direction::Down };
     snake.body.push(10);
     snake.body.push(11);
     snake.body.push(12);
@@ -132,8 +141,7 @@ fn main() {
         draw_board();
 
         clear_snake(&snake);
-        
-        let direction = snake.direction;
+        let mut direction = snake.direction.clone();
         user_input(&mut snake, direction);
         print_snake(&snake);
 
