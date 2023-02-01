@@ -12,13 +12,13 @@ use termios::{Termios, TCSANOW, ECHO, ICANON, tcsetattr};
 use std::{thread, time};
 use std::sync::RwLock;
 use std::sync::Arc;
-
+use rand::Rng;
 
 const WIDTH: u16 = 20;
 const HEIGHT: u16 = 20;
 
-const WIDTH_OFFSET: u16 = 59;
-const HEIGHT_OFFSET: u16 = 10;
+const WIDTH_OFFSET: u16 = 1;
+const HEIGHT_OFFSET: u16 = 1;
 
 #[derive(Clone)]
 enum Direction {
@@ -81,13 +81,13 @@ fn draw_board() {
     }
 }
 
-fn update_snake(snake: &mut Snake, direction: Direction) {
+fn update_snake(snake: &mut Snake) {
 
     // Update tail
     for i in (1..snake.body.len()).rev() { snake.body[i] = snake.body[i - 1]; }
     
     // Update head
-    move_head(snake, direction);
+    move_head(snake, snake.direction.clone());
 }
 
 fn print_snake(snake: &Snake) {
@@ -99,8 +99,12 @@ fn print_snake(snake: &Snake) {
     }
 }
 
+
+
+
 fn clear_snake(snake: &Snake) {
 
+    
     for i in 0..snake.body.len() { 
         println!("{goto} ",
             goto = cursor::Goto(get_x_from_coord(snake.body[i]) + WIDTH_OFFSET + 1, get_y_from_coord(snake.body[i]) + HEIGHT_OFFSET + 1)); 
@@ -108,43 +112,85 @@ fn clear_snake(snake: &Snake) {
 
 }
 
-fn user_input(snake: &mut Snake, prev_direction: Direction) {
+fn user_input() {
 
     thread::spawn(move || {
+    loop {
+            let stdin = 0;
+            let termios = Termios::from_fd(stdin).unwrap();
+            let mut new_termios = termios.clone();   
+            new_termios.c_lflag &= !(ICANON | ECHO); 
+            tcsetattr(stdin, TCSANOW, &mut new_termios).unwrap();
+            let stdout = io::stdout();
+            let mut reader = io::stdin();
+            stdout.lock().flush().unwrap();
 
-        let stdin = 0;
-        let termios = Termios::from_fd(stdin).unwrap();
-        let mut new_termios = termios.clone();   
-        new_termios.c_lflag &= !(ICANON | ECHO); 
-        tcsetattr(stdin, TCSANOW, &mut new_termios).unwrap();
-        let stdout = io::stdout();
-        let mut reader = io::stdin();
-        stdout.lock().flush().unwrap();
-
-        reader.read_exact(&mut key_buffer).unwrap();
-        println!("You have hit: {key_buffer}");
-        tcsetattr(stdin, TCSANOW, & termios).unwrap();
+            let lock = Arc::clone(&key_buffer);
+            let mut key = *lock.read().unwrap();
+            reader.read_exact(&mut key).unwrap();
+            tcsetattr(stdin, TCSANOW, & termios).unwrap();
+        
+            let l = Arc::clone(&key_buffer);
+            let mut write_lock = (*l).write();
+            if let Ok(mut write) = write_lock {
+                *write = key; 
+            }
+        }
     });
 }
 
+fn change_direction(snake: &mut Snake) {
+ 
+    let lock = Arc::clone(&key_buffer);
+    let mut key = *lock.read().unwrap();
+    
+    match key[0] {
+        b'a' => snake.direction = Direction::Left,
+        b'd' => snake.direction = Direction::Right,
+        b's' => snake.direction = Direction::Down,
+        b'w' => snake.direction = Direction::Up,
+        _ => ()
+    }
+}
+
+
+fn make_apple() -> u16 {
+    
+    let mut rng = rand::thread_rng();
+    rng.gen::<u16>() % (WIDTH * HEIGHT - 1)
+}
 
 fn main() {
-    
-    
+     
     println!("{clear}", clear = clear::All);
     let mut snake = Snake{ body: Vec::new(), direction: Direction::Down };
     snake.body.push(10);
     snake.body.push(11);
     snake.body.push(12);
+        
+    draw_board();
+
+    user_input();
+        
+
+    let mut apple = make_apple();
+    println!("{color}{goto}*", color = color::Fg(color::Green), 
+             goto = cursor::Goto(get_x_from_coord(apple) + WIDTH_OFFSET + 1, get_y_from_coord(apple) + HEIGHT_OFFSET + 1));
+
     loop {
-
-        draw_board();
-
+        
         clear_snake(&snake);
-        let mut direction = snake.direction.clone();
-        user_input(&mut snake, direction);
+        change_direction(&mut snake);
+        update_snake(&mut snake);
         print_snake(&snake);
 
+        println!("{color}{goto}*", color = color::Fg(color::Green), 
+            goto = cursor::Goto(get_x_from_coord(apple) + WIDTH_OFFSET + 1, get_y_from_coord(apple) + HEIGHT_OFFSET + 1)); 
+        
+        if snake.body[0] == apple { 
+            apple = make_apple();                     
+            snake.body.push(snake.body[snake.body.len() - 1] + 1);  
+        }
         thread::sleep(time::Duration::from_millis(100));
     }
 
